@@ -5,21 +5,19 @@
 #include <arpa/inet.h>
 
 #define PORT 5005
-#define MAX_BUFFER_SIZE 1024
+#define MAX_MSG_SIZE 1024
 
 int main() {
     int server_socket;
     struct sockaddr_in server_addr, client_addr;
     socklen_t addr_len = sizeof(client_addr);
-    char buffer[MAX_BUFFER_SIZE];
+    char buffer[MAX_MSG_SIZE];
 
-    // Create socket
     if ((server_socket = socket(AF_INET, SOCK_DGRAM, 0)) == -1) {
         perror("Error creating socket");
         exit(1);
     }
 
-    // Bind socket to IP and port
     memset(&server_addr, 0, sizeof(server_addr));
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(PORT);
@@ -31,7 +29,7 @@ int main() {
     }
 
     while (1) {
-        ssize_t bytes_received = recvfrom(server_socket, buffer, MAX_BUFFER_SIZE, 0, (struct sockaddr*)&client_addr, &addr_len);
+        ssize_t bytes_received = recvfrom(server_socket, buffer, MAX_MSG_SIZE, 0, (struct sockaddr*)&client_addr, &addr_len);
         if (bytes_received == -1) {
             perror("Error receiving data");
             exit(1);

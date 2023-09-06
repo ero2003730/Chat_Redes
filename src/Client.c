@@ -6,14 +6,13 @@
 
 #define SERVER_IP "127.0.0.1"
 #define PORT 5005
-#define MAX_BUFFER_SIZE 1024
+#define MAX_MSG_SIZE 1024
 
 int main() {
     int client_socket;
     struct sockaddr_in server_addr;
-    char buffer[MAX_BUFFER_SIZE];
+    char buffer[MAX_MSG_SIZE];
 
-    // Create socket
     if ((client_socket = socket(AF_INET, SOCK_DGRAM, 0)) == -1) {
         perror("Error creating socket");
         exit(1);
@@ -28,7 +27,7 @@ int main() {
     }
 
     while (1) {
-        printf("Enter message: ");
+        printf("Enter message or use 'exit' to quit: ");
         fgets(buffer, MAX_BUFFER_SIZE, stdin);
 
         if (sendto(client_socket, buffer, strlen(buffer), 0, (struct sockaddr*)&server_addr, sizeof(server_addr)) == -1) {
