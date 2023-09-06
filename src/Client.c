@@ -1,44 +1,47 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <arpa/inet.h>
 #include <unistd.h>
+#include <arpa/inet.h>
 
 #define SERVER_IP "127.0.0.1"
 #define PORT 5005
-#define MAX_MSG_LEN 1024
+#define MAX_BUFFER_SIZE 1024
 
-int main(void) {
+int main() {
     int client_socket;
-    struct sockaddr server_addr;
-    char buff[MAX_MSG_LEN]
+    struct sockaddr_in server_addr;
+    char buffer[MAX_BUFFER_SIZE];
 
-    if ((client_socket = socket(AF_INET, SOCK_DRAM, 0)) == -1) {
+    // Create socket
+    if ((client_socket = socket(AF_INET, SOCK_DGRAM, 0)) == -1) {
         perror("Error creating socket");
-        exit(EXIT_FAILURE);
+        exit(1);
     }
 
+    memset(&server_addr, 0, sizeof(server_addr));
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(PORT);
-    inet_pton(AF_INET, SERVER_IP, &server_addr.sin_addr);
+    if (inet_pton(AF_INET, SERVER_IP, &server_addr.sin_addr) <= 0) {
+        perror("Error converting IP address");
+        exit(1);
+    }
 
     while (1) {
-        printf("Type a message or 'exit' to quit: ");
-        fgets(buffer, sizeof(buff), stdin);
+        printf("Enter message: ");
+        fgets(buffer, MAX_BUFFER_SIZE, stdin);
 
-        size_t len = strlen(buff);
-        if (len > 0 && buff[len - 1] == '\n') {
-            buffer[len - 1] = '\0';
+        if (sendto(client_socket, buffer, strlen(buffer), 0, (struct sockaddr*)&server_addr, sizeof(server_addr)) == -1) {
+            perror("Error sending data");
+            exit(1);
         }
 
-        sendto(client_socket, buff, strlen(buff), 0, (struct socketaddr*)&server_addr, sizeof(server_addr));
-
-        if (strcmp(buff, 'exit') == 0){
+        if (strcmp(buffer, "exit\n") == 0) {
+            printf("Exiting...\n");
             break;
         }
-    }  
-    
-    close(client_socket);
+    }
 
+    close(client_socket);
     return 0;
 }
