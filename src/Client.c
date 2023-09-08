@@ -3,6 +3,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <arpa/inet.h>
+#include <sys/select.h> // Dependendo do sistema, pode ser necessário
 
 #define SERVER_IP "127.0.0.1"
 #define PORT 5005
@@ -31,32 +32,55 @@ int main()
         exit(1);
     }
 
+    fd_set read_fds;
+    struct timeval timeout;
+
     while (1)
     {
-        printf("Enter message or use 'exit' to quit: ");
-        fgets(buffer, MAX_MSG_SIZE, stdin);
+        FD_ZERO(&read_fds);
+        FD_SET(client_socket, &read_fds);
+        FD_SET(STDIN_FILENO, &read_fds);
 
-        if (sendto(client_socket, buffer, strlen(buffer), 0, (struct sockaddr *)&server_addr, sizeof(server_addr)) == -1)
+        timeout.tv_sec = 5;
+        timeout.tv_usec = 0;
+
+        int activity = select(client_socket + 1, &read_fds, NULL, NULL, &timeout);
+
+        if (activity < 0)
         {
-            perror("Error sending data");
-            exit(1);
+            perror("select error");
+            continue;
         }
 
-        ssize_t bytes_received = recvfrom(client_socket, buffer, MAX_MSG_SIZE, 0, (struct sockaddr *)&return_addr, &addr_len);
-
-        if (bytes_received == -1)
+        if (FD_ISSET(STDIN_FILENO, &read_fds))
         {
-            perror("Error receiving data");
-            exit(1);
+            fgets(buffer, MAX_MSG_SIZE, stdin);
+
+            if (sendto(client_socket, buffer, strlen(buffer), 0, (struct sockaddr *)&server_addr, sizeof(server_addr)) == -1)
+            {
+                perror("Error sending data");
+                exit(1);
+            }
         }
 
-        buffer[bytes_received] = '\0';
-        printf("Received from server: %s\n", buffer);
-
-        if (strcmp(buffer, "exit\n") == 0)
+        if (FD_ISSET(client_socket, &read_fds))
         {
-            printf("Exiting...\n");
-            break;
+            ssize_t bytes_received = recvfrom(client_socket, buffer, MAX_MSG_SIZE, 0, (struct sockaddr *)&return_addr, &addr_len);
+
+            if (bytes_received == -1)
+            {
+                perror("Error receiving data");
+                exit(1);
+            }
+
+            buffer[bytes_received] = '\0';
+            printf("Received from server: %s\n", buffer);
+
+            if (strcmp(buffer, "exit\n") == 0)
+            {
+                printf("Exiting...\n");
+                break;
+            }
         }
     }
 

@@ -8,18 +8,22 @@
 #define MAX_MSG_SIZE 1024
 #define MAX_CLIENTS 10
 
+int connected_clients = 0;
+
 struct Client
 {
     struct sockaddr_in addr;
     int id;
 };
 
+void sendMessage(int server_socket, char buffer[], struct Client *clients, socklen_t addr_len);
+
 int main()
 {
     int server_socket;
     struct sockaddr_in server_addr;
     char buffer[MAX_MSG_SIZE];
-    int connected_clients = 0;
+
     struct Client clients[MAX_CLIENTS];
 
     if ((server_socket = socket(AF_INET, SOCK_DGRAM, 0)) == -1)
@@ -53,13 +57,6 @@ int main()
 
         buffer[bytes_received] = '\0';
         printf("Received message from %s: %s\n", inet_ntoa(client_addr.sin_addr), buffer);
-
-        // Enviar a mesma mensagem de volta para o cliente
-        if (sendto(server_socket, buffer, strlen(buffer), 0, (struct sockaddr *)&client_addr, addr_len) == -1)
-        {
-            perror("Error sending data back to client");
-            exit(1);
-        }
 
         if (strcmp(buffer, "exit\n") == 0)
         {
@@ -108,6 +105,8 @@ int main()
             }
         }
 
+        sendMessage(server_socket, buffer, clients, addr_len);
+
         if (strcmp(buffer, "!n_clientes\n") == 0)
         {
             printf("Clientes no servidor: %i\n", connected_clients);
@@ -116,4 +115,17 @@ int main()
 
     close(server_socket);
     return 0;
+}
+
+void sendMessage(int server_socket, char buffer[], struct Client *clients, socklen_t addr_len)
+{
+    // Enviar a mesma mensagem de volta para o cliente
+    for (int i = 0; i < connected_clients; i++)
+    {
+        if (sendto(server_socket, buffer, strlen(buffer), 0, (struct sockaddr *)&clients[i].addr, addr_len) == -1)
+        {
+            perror("Error sending data back to client");
+            exit(1);
+        }
+    }
 }
