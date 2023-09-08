@@ -64,6 +64,12 @@ int main()
         {
             fgets(buffer, MAX_MSG_SIZE, stdin);
 
+            ssize_t len = strlen(buffer);
+            if (len > 0 && buffer[len - 1] == '\n')
+            {
+                buffer[len - 1] = '\0';
+            }
+
             if (sendto(client_socket, buffer, strlen(buffer), 0, (struct sockaddr *)&server_addr, sizeof(server_addr)) == -1)
             {
                 perror("Error sending data");

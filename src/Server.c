@@ -15,9 +15,10 @@ struct Client
     struct sockaddr_in addr;
     int id;
     char nickname[50];
+    int hasSetNickname; // 0 = false, 1 = true
 };
 
-void sendMessage(int server_socket, char buffer[], struct Client *clients, socklen_t addr_len);
+void sendMessage(int server_socket, char *buffer, struct Client *clients, socklen_t addr_len, char *senderNickname, struct sockaddr_in client_addr);
 void register_new_client(struct sockaddr_in client_addr, struct Client *clients, int server_socket, socklen_t addr_len);
 
 int main()
@@ -65,6 +66,17 @@ int main()
             continue;
         }
 
+        for (int i = 0; i < connected_clients; i++)
+        {
+            if (clients[i].addr.sin_port == client_addr.sin_port && !clients[i].hasSetNickname)
+            {
+                strcpy(clients[i].nickname, buffer);
+                clients[i].hasSetNickname = 1;
+                printf("Setting nickname to: %s\n", clients[i].nickname);
+                break;
+            }
+        }
+
         printf("Received message from %s: %s\n", inet_ntoa(client_addr.sin_addr), buffer);
 
         if (strcmp(buffer, "exit\n") == 0)
@@ -104,7 +116,17 @@ int main()
             }
         }
 
-        sendMessage(server_socket, buffer, clients, addr_len);
+        char senderNickname[50] = ""; // Inicie com uma string vazia para evitar lixo
+        for (int i = 0; i < connected_clients; i++)
+        {
+            if (clients[i].addr.sin_port == client_addr.sin_port)
+            {
+                strcpy(senderNickname, clients[i].nickname);
+                break;
+            }
+        }
+
+        sendMessage(server_socket, buffer, clients, addr_len, senderNickname, client_addr);
 
         if (strcmp(buffer, "!n_clientes\n") == 0)
         {
@@ -116,18 +138,27 @@ int main()
     return 0;
 }
 
-void sendMessage(int server_socket, char buffer[], struct Client *clients, socklen_t addr_len)
+void sendMessage(int server_socket, char *buffer, struct Client *clients, socklen_t addr_len, char *senderNickname, struct sockaddr_in client_addr)
 {
-    // Enviar a mesma mensagem de volta para o cliente
     for (int i = 0; i < connected_clients; i++)
     {
-        char messageWithNickname[MAX_MSG_SIZE + 50]; // 50 para o nickname
-        sprintf(messageWithNickname, "%s: %s", clients[i].nickname, buffer);
+        // Seu código para formar a mensagem final, provavelmente algo como:
+        char messageWithNickname[MAX_MSG_SIZE];
+        sprintf(messageWithNickname, "%s: %s", senderNickname, buffer);
 
-        if (sendto(server_socket, messageWithNickname, strlen(messageWithNickname), 0, (struct sockaddr *)&clients[i].addr, addr_len) == -1)
+        printf("Sender Nickname: %s\n", senderNickname);
+
+        // Adicione esta verificação para evitar enviar a mensagem de volta para o remetente
+        if (clients[i].addr.sin_port != client_addr.sin_port)
         {
-            perror("Error sending data back to client");
-            exit(1);
+            if (sendto(server_socket, messageWithNickname, strlen(messageWithNickname), 0, (struct sockaddr *)&clients[i].addr, addr_len) == -1)
+            {
+                perror("Error sending data back to client");
+            }
+            else
+            {
+                printf("Successfully sent message: %s\n", messageWithNickname);
+            }
         }
     }
 }
@@ -156,6 +187,7 @@ void register_new_client(struct sockaddr_in client_addr, struct Client *clients,
             clients[connected_clients].addr = client_addr;
             clients[connected_clients].id = connected_clients + 1;
             strcpy(clients[connected_clients].nickname, defaultNickname);
+            clients[connected_clients].hasSetNickname = 0;
             connected_clients++;
 
             // Envia a pergunta para o cliente
