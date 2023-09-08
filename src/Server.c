@@ -66,12 +66,15 @@ int main()
             continue;
         }
 
+        int shouldSendMessage = 1;
+
         for (int i = 0; i < connected_clients; i++)
         {
             if (clients[i].addr.sin_port == client_addr.sin_port && !clients[i].hasSetNickname)
             {
                 strcpy(clients[i].nickname, buffer);
                 clients[i].hasSetNickname = 1;
+                shouldSendMessage = 0;
                 printf("Setting nickname to: %s\n", clients[i].nickname);
                 break;
             }
@@ -116,7 +119,8 @@ int main()
             }
         }
 
-        char senderNickname[50] = ""; // Inicie com uma string vazia para evitar lixo
+        // Buscar o nickname uma única vez
+        char senderNickname[50] = "";
         for (int i = 0; i < connected_clients; i++)
         {
             if (clients[i].addr.sin_port == client_addr.sin_port)
@@ -126,7 +130,15 @@ int main()
             }
         }
 
-        sendMessage(server_socket, buffer, clients, addr_len, senderNickname, client_addr);
+        if (shouldSendMessage)
+        {
+            sendMessage(server_socket, buffer, clients, addr_len, senderNickname, client_addr);
+        }
+
+        if (strcmp(buffer, "!n_clientes\n") == 0)
+        {
+            printf("Clientes no servidor: %i\n", connected_clients);
+        }
 
         if (strcmp(buffer, "!n_clientes\n") == 0)
         {
