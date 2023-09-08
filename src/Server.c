@@ -18,7 +18,7 @@ struct Client
     int hasSetNickname; // 0 = false, 1 = true
 };
 
-void sendMessage(int server_socket, char *buffer, struct Client *clients, socklen_t addr_len, char *senderNickname, struct sockaddr_in client_addr);
+void sendMessage(int server_socket, const char *message, struct Client *clients, socklen_t addr_len, const char *senderNickname, struct sockaddr_in original_sender);
 void register_new_client(struct sockaddr_in client_addr, struct Client *clients, int server_socket, socklen_t addr_len);
 
 int main()
@@ -150,27 +150,33 @@ int main()
     return 0;
 }
 
-void sendMessage(int server_socket, char *buffer, struct Client *clients, socklen_t addr_len, char *senderNickname, struct sockaddr_in client_addr)
+void sendMessage(int server_socket, const char *message, struct Client *clients, socklen_t addr_len, const char *senderNickname, struct sockaddr_in original_sender)
 {
+    char buffer_with_nickname[MAX_MSG_SIZE];
     for (int i = 0; i < connected_clients; i++)
     {
-        // Seu código para formar a mensagem final, provavelmente algo como:
-        char messageWithNickname[MAX_MSG_SIZE];
-        sprintf(messageWithNickname, "%s: %s", senderNickname, buffer);
-
-        printf("Sender Nickname: %s\n", senderNickname);
-
-        // Adicione esta verificação para evitar enviar a mensagem de volta para o remetente
-        if (clients[i].addr.sin_port != client_addr.sin_port)
+        if (senderNickname && strlen(senderNickname) > 0)
         {
-            if (sendto(server_socket, messageWithNickname, strlen(messageWithNickname), 0, (struct sockaddr *)&clients[i].addr, addr_len) == -1)
+            if (clients[i].addr.sin_port == original_sender.sin_port) // É o mesmo cliente que enviou a mensagem
             {
-                perror("Error sending data back to client");
+                snprintf(buffer_with_nickname, sizeof(buffer_with_nickname), "%s: %s", senderNickname, message);
             }
-            else
+            else // Outros clientes
             {
-                printf("Successfully sent message: %s\n", messageWithNickname);
+                snprintf(buffer_with_nickname, sizeof(buffer_with_nickname), "%s: %s", senderNickname, message);
             }
+        }
+        else
+        {
+            strncpy(buffer_with_nickname, message, sizeof(buffer_with_nickname));
+        }
+        buffer_with_nickname[sizeof(buffer_with_nickname) - 1] = '\0'; // Certifique-se de que é NULL-terminado
+
+        ssize_t bytes_sent = sendto(server_socket, buffer_with_nickname, strlen(buffer_with_nickname), 0, (struct sockaddr *)&clients[i].addr, addr_len);
+        if (bytes_sent == -1)
+        {
+            perror("Error sending data");
+            exit(1);
         }
     }
 }
