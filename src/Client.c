@@ -32,6 +32,14 @@ int main()
         exit(1);
     }
 
+    // Agora que server_addr está inicializado, podemos enviar a mensagem "PING"
+    char initialMsg[] = "PING";
+    if (sendto(client_socket, initialMsg, strlen(initialMsg), 0, (struct sockaddr *)&server_addr, sizeof(server_addr)) == -1)
+    {
+        perror("Error sending initial data");
+        exit(1);
+    }
+
     fd_set read_fds;
     struct timeval timeout;
 
@@ -74,7 +82,7 @@ int main()
             }
 
             buffer[bytes_received] = '\0';
-            printf("Received from server: %s\n", buffer);
+            printf("%s\n", buffer);
 
             if (strcmp(buffer, "exit\n") == 0)
             {
