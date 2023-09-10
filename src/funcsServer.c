@@ -1,23 +1,50 @@
 #include "funcsServer.h" // para garantir que a implementação está em conformidade com o cabeçalho
 
 extern int connected_clients;
+int admin_client_id = -1;
+
+#define MAX_MESSAGE_SIZE 512
+#define TIME_STR_SIZE 9
 
 void msg(int server_socket, char *buffer, struct Client *clients, socklen_t addr_len, int idCliente)
 {
-    // Verifique se o cliente que está enviando a mensagem está silenciado
+    // Check if the client sending the message is muted
     if (clients[idCliente].isMuted)
         return;
 
+    // Get current time
+    time_t now;
+    time(&now);
+    struct tm *local = localtime(&now);
+
+    // Format the time
+    char timeStr[TIME_STR_SIZE];
+    if (strftime(timeStr, sizeof(timeStr), "%H:%M:%S", local) == 0)
+    {
+        perror("Error formating time");
+        return;
+    }
+
+    // Concatenate the timestamp to the message
+    char *timedMessage = (char *)malloc(MAX_MESSAGE_SIZE);
+    if (timedMessage == NULL)
+    {
+        // Handle memory allocation failure
+        return;
+    }
+    snprintf(timedMessage, MAX_MESSAGE_SIZE, "[%s] %s", timeStr, buffer);
+
     for (int i = 0; i < connected_clients; i++)
     {
-        ssize_t bytes_sent = sendto(server_socket, buffer, strlen(buffer), 0,
+        ssize_t bytes_sent = sendto(server_socket, timedMessage, strlen(timedMessage), 0,
                                     (struct sockaddr *)&clients[i].addr, addr_len);
         if (bytes_sent == -1)
         {
-            perror("Error sending data");
-            exit(1);
+            // Log the error instead of exiting
         }
     }
+
+    free(timedMessage);
 }
 
 void handleCommand(char *message, struct sockaddr_in client_addr, struct Client *clients, int server_socket, socklen_t addr_len, int idCliente, char *senderNickname)
@@ -56,56 +83,79 @@ void handleCommand(char *message, struct sockaddr_in client_addr, struct Client 
     }
     else if (strcmp(message, "!help") == 0)
     {
-        snprintf(buffer, sizeof(buffer), "!n_clients: Número de clientes no Chat");
-        sendto(server_socket, buffer, strlen(buffer), 0, (struct sockaddr *)&clients[idCliente].addr, addr_len);
+        // Preparando uma única string para armazenar todas as informações de ajuda.
+        char helpMessage[1024] = "";
 
-        snprintf(buffer, sizeof(buffer), "!users: Clientes online");
-        sendto(server_socket, buffer, strlen(buffer), 0, (struct sockaddr *)&clients[idCliente].addr, addr_len);
+        // Concatenando todas as informações de ajuda.
+        strcat(helpMessage, "!n_clients: Número de clientes no Chat\n");
+        strcat(helpMessage, "!users: Clientes online\n");
+        strcat(helpMessage, "!time: Tempo que o cliente está utilizando o chat\n");
+        strcat(helpMessage, "!mute <user>: Silenciar um usuário específico\n");
+        strcat(helpMessage, "!unmute <user>: Desfaz o mute de um usuário específico\n");
+        strcat(helpMessage, "!clear: Limpa o histórico de mensagens do chat para você\n");
+        strcat(helpMessage, "!changename: Permite mudar o seu apelido\n");
+        strcat(helpMessage, "!privateMsg <nomeCliente> <msg>: Envia uma mensagem privada para um usuário específico\n");
 
-        snprintf(buffer, sizeof(buffer), "!time: Tempo que o cliente está utilizando o chat");
-        sendto(server_socket, buffer, strlen(buffer), 0, (struct sockaddr *)&clients[idCliente].addr, addr_len);
-
-        snprintf(buffer, sizeof(buffer), "!mute <user>: Silenciar um usuário específico");
-        sendto(server_socket, buffer, strlen(buffer), 0, (struct sockaddr *)&clients[idCliente].addr, addr_len);
-
-        snprintf(buffer, sizeof(buffer), "!unmute <user>: Desfaz o mute de um usuário específico");
-        sendto(server_socket, buffer, strlen(buffer), 0, (struct sockaddr *)&clients[idCliente].addr, addr_len);
-
-        snprintf(buffer, sizeof(buffer), "!clear: Limpa o histórico de mensagens do chat para você");
-        sendto(server_socket, buffer, strlen(buffer), 0, (struct sockaddr *)&clients[idCliente].addr, addr_len);
-
-        snprintf(buffer, sizeof(buffer), "!changename <new_name>: Permite mudar o seu apelido");
-        sendto(server_socket, buffer, strlen(buffer), 0, (struct sockaddr *)&clients[idCliente].addr, addr_len);
+        // Enviando a mensagem completa de uma só vez.
+        send_message_to_client(server_socket, helpMessage, clients, addr_len, idCliente);
     }
 
     else if (strncmp(message, "!mute ", 6) == 0)
     {
-        char targetUser[50];
-        sscanf(message + 6, "%s", targetUser);
-        for (int i = 0; i < connected_clients; i++)
+        if (clients[idCliente].isAdmin)
         {
-            if (strcmp(clients[i].nickname, targetUser) == 0)
+            char targetUser[50];
+            sscanf(message + 6, "%s", targetUser);
+            for (int i = 0; i < connected_clients; i++)
             {
-                clients[i].isMuted = 1;
-                strcpy(clients[i].mutedBy, clients[idCliente].nickname);
-                snprintf(buffer, sizeof(buffer), "%s foi silenciado por %s", targetUser, clients[idCliente].nickname);
-                msg(server_socket, buffer, clients, addr_len, idCliente);
-                return;
+                if (strcmp(clients[i].nickname, targetUser) == 0)
+                {
+                    clients[i].isMuted = 1;
+                    strcpy(clients[i].mutedBy, clients[idCliente].nickname);
+                    snprintf(buffer, sizeof(buffer), "%s foi silenciado por %s", targetUser, clients[idCliente].nickname);
+                    msg(server_socket, buffer, clients, addr_len, idCliente);
+                    return;
+                }
+            }
+        }
+        else
+        {
+            char muteMsg[] =
+                "Apenas o administrador pode mutar alguem";
+            if (sendto(server_socket, muteMsg, strlen(muteMsg), 0,
+                       (struct sockaddr *)&client_addr, addr_len) == -1)
+            {
+                perror("Error sending data to new client");
+                exit(1);
             }
         }
     }
     else if (strncmp(message, "!unmute ", 8) == 0)
     {
-        char targetUser[50];
-        sscanf(message + 8, "%s", targetUser);
-        for (int i = 0; i < connected_clients; i++)
+        if (clients[idCliente].isAdmin)
         {
-            if (strcmp(clients[i].nickname, targetUser) == 0 && clients[i].isMuted)
+            char targetUser[50];
+            sscanf(message + 8, "%s", targetUser);
+            for (int i = 0; i < connected_clients; i++)
             {
-                clients[i].isMuted = 0;
-                snprintf(buffer, sizeof(buffer), "%s foi dessilenciado por %s", targetUser, clients[idCliente].nickname);
-                msg(server_socket, buffer, clients, addr_len, idCliente);
-                return;
+                if (strcmp(clients[i].nickname, targetUser) == 0 && clients[i].isMuted)
+                {
+                    clients[i].isMuted = 0;
+                    snprintf(buffer, sizeof(buffer), "%s foi dessilenciado por %s", targetUser, clients[idCliente].nickname);
+                    msg(server_socket, buffer, clients, addr_len, idCliente);
+                    return;
+                }
+            }
+        }
+        else
+        {
+            char unmuteMsg[] =
+                "Apenas o administrador pode desmutar alguem";
+            if (sendto(server_socket, unmuteMsg, strlen(unmuteMsg), 0,
+                       (struct sockaddr *)&client_addr, addr_len) == -1)
+            {
+                perror("Error sending data to new client");
+                exit(1);
             }
         }
     }
@@ -169,6 +219,63 @@ void handleCommand(char *message, struct sockaddr_in client_addr, struct Client 
             }
         }
     }
+    else if (strncmp(message, "!privateMsg ", 11) == 0)
+    {
+        char targetUser[50], privateMsg[500];
+        sscanf(message + 11, "%s %[^\n]", targetUser, privateMsg);
+
+        // Obter o tempo atual
+        time_t now;
+        time(&now);
+        struct tm *local = localtime(&now);
+
+        // Formatar o tempo
+        char timeStr[9];
+        strftime(timeStr, sizeof(timeStr), "%H:%M:%S", local);
+
+        // Procura o cliente com o nome correspondente
+        int targetClientID = -1;
+        for (int i = 0; i < connected_clients; i++)
+        {
+            if (strcmp(clients[i].nickname, targetUser) == 0)
+            {
+                targetClientID = i;
+                break;
+            }
+        }
+
+        // Se encontrou, envia a mensagem
+        if (targetClientID != -1)
+        {
+            int requiredSize = snprintf(NULL, 0, "[%s] [Privado de %s]: %s", timeStr, senderNickname, privateMsg);
+            char timedPrivateMsg[requiredSize + 1];
+            snprintf(timedPrivateMsg, sizeof(timedPrivateMsg), "[%s] [Privado de %s]: %s", timeStr, senderNickname, privateMsg);
+
+            ssize_t bytes_sent = sendto(server_socket, timedPrivateMsg, strlen(timedPrivateMsg), 0,
+                                        (struct sockaddr *)&clients[targetClientID].addr, addr_len);
+            if (bytes_sent == -1)
+            {
+                perror("Error sending private message");
+                exit(1);
+            }
+        }
+        else
+        {
+            // Se não encontrou, envia uma mensagem de erro de volta para o cliente que tentou enviar
+            snprintf(buffer, sizeof(buffer), "Usuário %s não encontrado.", targetUser);
+            sendto(server_socket, buffer, strlen(buffer), 0,
+                   (struct sockaddr *)&clients[idCliente].addr, addr_len);
+        }
+    }
+}
+
+void send_message_to_client(int server_socket, char *buffer, struct Client *clients, socklen_t addr_len, int idCliente)
+{
+    ssize_t bytes_sent = sendto(server_socket, buffer, strlen(buffer), 0, (struct sockaddr *)&clients[idCliente].addr, addr_len);
+    if (bytes_sent == -1)
+    {
+        perror("Error sending data");
+    }
 }
 
 void sendMessage(int server_socket, const char *message, struct Client *clients,
@@ -219,6 +326,12 @@ void register_new_client(struct sockaddr_in client_addr, struct Client *clients,
     {
         if (connected_clients < MAX_CLIENTS)
         {
+            if (admin_client_id == -1)
+            {
+                admin_client_id = connected_clients;
+                clients[connected_clients].isAdmin = 1;
+                admin_client_id = 0;
+            }
             char defaultNickname[50];
             sprintf(defaultNickname, "client%d", connected_clients);
             gettimeofday(&clients[connected_clients].tempo, NULL);

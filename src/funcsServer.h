@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <time.h>
 
 // Definições de constantes e variáveis
 #define PORT 5005
@@ -25,6 +26,7 @@ struct Client
     struct timeval tempo;
     int isMuted;
     char mutedBy[50];
+    int isAdmin;
 };
 
 extern int connected_clients;
@@ -40,5 +42,6 @@ int handle_receive_error(ssize_t bytes_received);
 void handle_received_message(char *buffer, struct sockaddr_in client_addr, struct Client *clients, int server_socket, socklen_t addr_len);
 void handle_client_exit(struct sockaddr_in client_addr, struct Client *clients, int server_socket, socklen_t addr_len);
 void handleCommand(char *message, struct sockaddr_in client_addr, struct Client *clients, int server_socket, socklen_t addr_len, int idCliente, char *senderNickname);
+void send_message_to_client(int server_socket, char *buffer, struct Client *clients, socklen_t addr_len, int idCliente);
 
 #endif // FUNCSERVER_H
