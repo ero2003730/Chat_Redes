@@ -23,11 +23,13 @@ struct Client
     char nickname[50];
     int hasSetNickname;
     struct timeval tempo;
+    int isMuted;
+    char mutedBy[50];
 };
 
 extern int connected_clients;
 
-void msg(int server_socket, char *buffer, struct Client *clients, socklen_t addr_len);
+void msg(int server_socket, char *buffer, struct Client *clients, socklen_t addr_len, int idCliente);
 void sendMessage(int server_socket, const char *message, struct Client *clients,
                  socklen_t addr_len, const char *senderNickname,
                  int idCliente, int shouldBroadcast);
@@ -37,5 +39,6 @@ int initialize_server(struct sockaddr_in *server_addr);
 int handle_receive_error(ssize_t bytes_received);
 void handle_received_message(char *buffer, struct sockaddr_in client_addr, struct Client *clients, int server_socket, socklen_t addr_len);
 void handle_client_exit(struct sockaddr_in client_addr, struct Client *clients, int server_socket, socklen_t addr_len);
+void handleCommand(char *message, struct sockaddr_in client_addr, struct Client *clients, int server_socket, socklen_t addr_len, int idCliente, char *senderNickname);
 
 #endif // FUNCSERVER_H
