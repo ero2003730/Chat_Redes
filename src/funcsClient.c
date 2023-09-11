@@ -1,5 +1,6 @@
 #include "funcsClient.h"
 
+//Inicializando o socket
 void initialize_socket(int *client_socket)
 {
     if ((*client_socket = socket(AF_INET, SOCK_DGRAM, 0)) == -1)
@@ -9,6 +10,7 @@ void initialize_socket(int *client_socket)
     }
 }
 
+//Aqui faz a inicialização do server addr, onde os dados são fornecidos na funcsClient.h
 void initialize_server_address(struct sockaddr_in *server_addr)
 {
     memset(server_addr, 0, sizeof(*server_addr));
@@ -22,6 +24,7 @@ void initialize_server_address(struct sockaddr_in *server_addr)
     }
 }
 
+//Mensagem inicial, para mandar quando o cliente entrar no server, como uma forma de verificar
 void send_initial_message(int client_socket, struct sockaddr_in server_addr)
 {
     char initialMsg[] = "PING";
@@ -32,6 +35,7 @@ void send_initial_message(int client_socket, struct sockaddr_in server_addr)
     }
 }
 
+//Aqui faz o while para o cliente escutar e enviar mensagem ao servidor
 void handle_client(int client_socket, struct sockaddr_in server_addr, struct sockaddr_in return_addr)
 {
     fd_set read_fds;

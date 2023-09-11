@@ -1,5 +1,6 @@
 #include "funcsClient.h"
 
+//A main, chamando as funções de inicialização primeiro e depois o while, finalizando o cliente ao final
 int main()
 {
     int client_socket;

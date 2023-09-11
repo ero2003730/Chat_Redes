@@ -8,16 +8,15 @@ int admin_client_id = -1;
 
 void msg(int server_socket, char *buffer, struct Client *clients, socklen_t addr_len, int idCliente)
 {
-    // Check if the client sending the message is muted
+    // Verifica se o cliente esta mutado, caso positivo ele não pode enviar a mensagem
     if (clients[idCliente].isMuted)
         return;
 
-    // Get current time
+    // Pegando o tempo atual, para colocar na frente da mensagem
     time_t now;
     time(&now);
     struct tm *local = localtime(&now);
 
-    // Format the time
     char timeStr[TIME_STR_SIZE];
     if (strftime(timeStr, sizeof(timeStr), "%H:%M:%S", local) == 0)
     {
@@ -25,38 +24,41 @@ void msg(int server_socket, char *buffer, struct Client *clients, socklen_t addr
         return;
     }
 
-    // Concatenate the timestamp to the message
     char *timedMessage = (char *)malloc(MAX_MESSAGE_SIZE);
     if (timedMessage == NULL)
     {
-        // Handle memory allocation failure
         return;
     }
     snprintf(timedMessage, MAX_MESSAGE_SIZE, "[%s] %s", timeStr, buffer);
 
+    //Lógica para enviar para todos os clientes conectados no servidor tal mensagem
     for (int i = 0; i < connected_clients; i++)
     {
+        //Aqui que é feito o envio da mensagem com o uso da função sendto
         ssize_t bytes_sent = sendto(server_socket, timedMessage, strlen(timedMessage), 0,
                                     (struct sockaddr *)&clients[i].addr, addr_len);
         if (bytes_sent == -1)
         {
-            // Log the error instead of exiting
         }
     }
 
     free(timedMessage);
 }
 
+//Parte do código onde é feito o tratamento dos comandos de nosso servidor
 void handleCommand(char *message, struct sockaddr_in client_addr, struct Client *clients, int server_socket, socklen_t addr_len, int idCliente, char *senderNickname)
 {
     char buffer[MAX_MSG_SIZE];
 
+    //Neste comando, é mostrado a quantidade de clientes presentes no momento no servidor
     if (strcmp(message, "!n_clients") == 0)
     {
         snprintf(buffer, sizeof(buffer), "Número de clientes no servidor: %i", connected_clients);
         sendto(server_socket, buffer, strlen(buffer), 0,
                (struct sockaddr *)&clients[idCliente].addr, addr_len);
     }
+
+    //Se digitado users, mostra o nickname de todos presentes
     else if (strcmp(message, "!users") == 0)
     {
         snprintf(buffer, sizeof(buffer), "Usuários online:");
@@ -70,6 +72,8 @@ void handleCommand(char *message, struct sockaddr_in client_addr, struct Client 
                    (struct sockaddr *)&clients[idCliente].addr, addr_len);
         }
     }
+
+    //Aqui, mostra o tempo do usuario que digitou no servidor
     else if (strcmp(message, "!time") == 0)
     {
         struct timeval tempoAtual;
@@ -81,12 +85,14 @@ void handleCommand(char *message, struct sockaddr_in client_addr, struct Client 
         sendto(server_socket, buffer, strlen(buffer), 0,
                (struct sockaddr *)&clients[idCliente].addr, addr_len);
     }
+
+    //No !help, mostra todos comandos disponíveis
     else if (strcmp(message, "!help") == 0)
     {
-        // Preparando uma única string para armazenar todas as informações de ajuda.
+        //Preparando uma única string para armazenar todas as informações de ajuda
         char helpMessage[1024] = "";
 
-        // Concatenando todas as informações de ajuda.
+        //Concatenando todas as informações de ajuda
         strcat(helpMessage, "!n_clients: Número de clientes no Chat\n");
         strcat(helpMessage, "!users: Clientes online\n");
         strcat(helpMessage, "!time: Tempo que o cliente está utilizando o chat\n");
@@ -96,12 +102,14 @@ void handleCommand(char *message, struct sockaddr_in client_addr, struct Client 
         strcat(helpMessage, "!changename: Permite mudar o seu apelido\n");
         strcat(helpMessage, "!privateMsg <nomeCliente> <msg>: Envia uma mensagem privada para um usuário específico\n");
 
-        // Enviando a mensagem completa de uma só vez.
+        //Enviando a mensagem completa de uma só vez
         send_message_to_client(server_socket, helpMessage, clients, addr_len, idCliente);
     }
 
+    //Aqui um admin pode mutar outra pessoa
     else if (strncmp(message, "!mute ", 6) == 0)
     {
+        //Verifica se é admin pois só ele pode mutar
         if (clients[idCliente].isAdmin)
         {
             char targetUser[50];
@@ -130,6 +138,38 @@ void handleCommand(char *message, struct sockaddr_in client_addr, struct Client 
             }
         }
     }
+
+    //Semelhante ao mute, mas agora para retirar uma pessoa do server
+     else if (strncmp(message, "!kick ", 6) == 0)
+    {
+        if (clients[idCliente].isAdmin)
+        {
+            char targetUser[50];
+            sscanf(message + 8, "%s", targetUser);
+            for (int i = 0; i < connected_clients; i++)
+            {
+                if (strcmp(clients[i].nickname, targetUser) == 0)
+                {
+                    clients[i].isMuted = 0;
+                    handle_client_exit(clients[i].addr, clients, server_socket, addr_len);
+                    return;
+                }
+            }
+        }
+        else
+        {
+            char kickMsg[] =
+                "Apenas o administrador pode kickar alguem";
+            if (sendto(server_socket, kickMsg, strlen(muteMsg), 0,
+                       (struct sockaddr *)&client_addr, addr_len) == -1)
+            {
+                perror("Error sending data to new client");
+                exit(1);
+            }
+        }
+    }
+   
+    //Semelhante aos anteriores, mas agora para desmutar alguém já mutado
     else if (strncmp(message, "!unmute ", 8) == 0)
     {
         if (clients[idCliente].isAdmin)
@@ -159,6 +199,8 @@ void handleCommand(char *message, struct sockaddr_in client_addr, struct Client 
             }
         }
     }
+
+    //Limpando o terminal para deixar melhor a visualização, caso o cliente queira
     else if (strcmp(message, "!clear") == 0)
     {
         // Envia 50 linhas em branco para "limpar" o terminal do cliente
@@ -169,6 +211,8 @@ void handleCommand(char *message, struct sockaddr_in client_addr, struct Client 
                    (struct sockaddr *)&clients[idCliente].addr, addr_len);
         }
     }
+
+    //Função de trocar o nickname de alguém caso seja necessário
     else if (strncmp(message, "!changename", 12) == 0)
     {
         snprintf(buffer, sizeof(buffer), "Digite seu novo nickname:");
@@ -219,6 +263,8 @@ void handleCommand(char *message, struct sockaddr_in client_addr, struct Client 
             }
         }
     }
+
+    //Essa serve para mandar uma mensagem privada, falando o nome do usúario 
     else if (strncmp(message, "!privateMsg ", 11) == 0)
     {
         char targetUser[50], privateMsg[500];
@@ -269,6 +315,7 @@ void handleCommand(char *message, struct sockaddr_in client_addr, struct Client 
     }
 }
 
+//Função para mandar mensagem para um cliente específico, usando o sendto
 void send_message_to_client(int server_socket, char *buffer, struct Client *clients, socklen_t addr_len, int idCliente)
 {
     ssize_t bytes_sent = sendto(server_socket, buffer, strlen(buffer), 0, (struct sockaddr *)&clients[idCliente].addr, addr_len);
@@ -278,6 +325,7 @@ void send_message_to_client(int server_socket, char *buffer, struct Client *clie
     }
 }
 
+//Mandando mensagem, caso seja necessário para todos os usuários
 void sendMessage(int server_socket, const char *message, struct Client *clients,
                  socklen_t addr_len, const char *senderNickname,
                  int idCliente, int shouldBroadcast)
@@ -307,10 +355,11 @@ void sendMessage(int server_socket, const char *message, struct Client *clients,
     }
 }
 
+//Registrando um cliente, fazendo verificações se ele ja existe ou não
 void register_new_client(struct sockaddr_in client_addr, struct Client *clients,
                          int server_socket, socklen_t addr_len)
 {
-    // Verifica se o cliente já existe na lista
+    //Verifica se o cliente já existe na lista
     int client_exists = 0;
     for (int i = 0; i < connected_clients; i++)
     {
@@ -321,7 +370,7 @@ void register_new_client(struct sockaddr_in client_addr, struct Client *clients,
         }
     }
 
-    // Se o cliente não existe, adiciona-o à lista
+    //Se o cliente não existe, adiciona-o à lista
     if (!client_exists)
     {
         if (connected_clients < MAX_CLIENTS)
@@ -342,7 +391,7 @@ void register_new_client(struct sockaddr_in client_addr, struct Client *clients,
             clients[connected_clients].isMuted = 0; // Adicione esta linha
             connected_clients++;
 
-            // Envia a pergunta para o cliente
+            //Envia a pergunta para o cliente
             char welcomeMsg[] =
                 "Bem-vindo ao chat! Como você gostaria de ser chamado?";
             if (sendto(server_socket, welcomeMsg, strlen(welcomeMsg), 0,
@@ -359,6 +408,7 @@ void register_new_client(struct sockaddr_in client_addr, struct Client *clients,
     }
 }
 
+//Inicializando o server 
 int initialize_server(struct sockaddr_in *server_addr)
 {
     int server_socket;
@@ -382,6 +432,7 @@ int initialize_server(struct sockaddr_in *server_addr)
     return server_socket;
 }
 
+//Caso tenha erro, é tratado aqui
 int handle_receive_error(ssize_t bytes_received)
 {
     if (bytes_received == -1)
@@ -392,6 +443,7 @@ int handle_receive_error(ssize_t bytes_received)
     return 0;
 }
 
+//Tratando a mensagem recebida
 void handle_received_message(char *buffer, struct sockaddr_in client_addr, struct Client *clients, int server_socket, socklen_t addr_len)
 {
     int shouldSendMessage = 1;
@@ -427,7 +479,7 @@ void handle_received_message(char *buffer, struct sockaddr_in client_addr, struc
         }
     }
 
-    // Primeira determinação do idCliente
+    //Primeira determinação do idCliente
     int idCliente = -1;
     for (int i = 0; i < connected_clients; i++)
     {
@@ -446,7 +498,7 @@ void handle_received_message(char *buffer, struct sockaddr_in client_addr, struc
         return;
     }
 
-    // Se o cliente não existe, adiciona-o à lista
+    //Se o cliente não existe, adiciona-o à lista
     int client_exists = 0;
     for (int i = 0; i < connected_clients; i++)
     {
@@ -474,13 +526,13 @@ void handle_received_message(char *buffer, struct sockaddr_in client_addr, struc
         }
     }
 
-    // Em handle_received_message()
+    //Em handle_received_message()
     if (buffer[0] == '!')
     {
-        shouldBroadcast = 0; // Não transmitir para todos
+        shouldBroadcast = 0; //Não transmitir para todos
         handleCommand(buffer, client_addr, clients, server_socket, addr_len, idCliente, senderNickname);
 
-        return; // Retorne após processar o comando
+        return; //Retorne após processar o comando
     }
 
     if (shouldSendMessage)
@@ -488,12 +540,12 @@ void handle_received_message(char *buffer, struct sockaddr_in client_addr, struc
         sendMessage(server_socket, buffer, clients, addr_len, senderNickname, idCliente, shouldBroadcast);
     }
 
-    // Coloque este loop no final da função handle_received_message
+    //Coloque este loop no final da função handle_received_message
     for (int i = 0; i < connected_clients; i++)
     {
         printf("Índice do array: %d\n", i);
         printf("idCliente: %d\n", clients[i].id);
-        printf("Porta: %d\n", ntohs(clients[i].addr.sin_port)); // ntohs() converte de network byte order para host byte order
+        printf("Porta: %d\n", ntohs(clients[i].addr.sin_port)); //ntohs() converte de network byte order para host byte order
         printf("Nickname: %s\n", clients[i].nickname);
         printf("hasSetNickname: %d\n", clients[i].hasSetNickname);
         printf("isMuted: %d\n", clients[i].isMuted);
@@ -502,6 +554,7 @@ void handle_received_message(char *buffer, struct sockaddr_in client_addr, struc
     }
 }
 
+//Tratando caso o cliente queira sair
 void handle_client_exit(struct sockaddr_in client_addr, struct Client *clients, int server_socket, socklen_t addr_len)
 {
     char exitMessage[MAX_MSG_SIZE];
@@ -509,7 +562,7 @@ void handle_client_exit(struct sockaddr_in client_addr, struct Client *clients, 
 
     int clientIndex = -1;
 
-    // Procurar o cliente que está saindo
+    //Procurar o cliente que está saindo
     for (int i = 0; i < connected_clients; i++)
     {
         if (clients[i].addr.sin_port == client_addr.sin_port)
@@ -521,21 +574,21 @@ void handle_client_exit(struct sockaddr_in client_addr, struct Client *clients, 
 
     if (clientIndex == -1)
     {
-        // Cliente não encontrado, então simplesmente retorne
+        //Cliente não encontrado, então simplesmente retorne
         return;
     }
 
-    // Construir a mensagem de saída
+    //Construir a mensagem de saída
     snprintf(exitMessage, sizeof(exitMessage), "%s saiu do Chat", clients[clientIndex].nickname);
 
-    // Remover o cliente da lista de clientes conectados
+    //Remover o cliente da lista de clientes conectados
     for (int j = clientIndex; j < connected_clients - 1; j++)
     {
         clients[j] = clients[j + 1];
     }
     connected_clients--;
 
-    // Enviar a mensagem de saída para todos os clientes restantes
+    //Enviar a mensagem de saída para todos os clientes restantes
     for (int i = 0; i < connected_clients; i++)
     {
         sendto(server_socket, exitMessage, strlen(exitMessage), 0,
