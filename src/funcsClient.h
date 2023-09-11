@@ -10,7 +10,7 @@
 #include <sys/select.h>
 
 //Definindo o IP do server, a porta e o tamanho máximo da mensagem
-#define SERVER_IP "127.0.0.1"
+#define SERVER_IP "172.21.217.139"
 #define PORT 5005
 #define MAX_MSG_SIZE 1024
 
